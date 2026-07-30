@@ -45,9 +45,9 @@ class DeployWorker:
         device_id = name
 
         try:
-            # Calculate last octet
+            # Calculate last octet + 1 (e.g., 192.168.2.101 -> 102)
             last_octet = int(ip.split('.')[-1])
-            short_id = str(last_octet).zfill(3)  # e.g., 101 -> "101"
+            short_id = str(last_octet + 1)  # e.g., 101 -> "102"
 
             self._log(device_id, f"Starting deployment to {ip} (id: {short_id})")
             self._log(device_id, f"Checking out tag: {tag}")
@@ -68,14 +68,11 @@ class DeployWorker:
             self._log(device_id, "Tag checked out successfully")
 
             # Step 2: Run install script with short ID
-            install_script = Path(repo_path) / 'install.sh'
-            if not install_script.exists():
-                # Try repo subfolder
-                install_script = Path(repo_path) / 'repo' / 'install.sh'
+            install_script = Path(repo_path) / 'repo' / 'install.sh'
 
             if not install_script.exists():
-                self._log(device_id, "install.sh not found!")
-                return False, "install.sh not found"
+                self._log(device_id, "repo/install.sh not found!")
+                return False, "repo/install.sh not found"
 
             cmd = ['bash', str(install_script), short_id]
             self._log(device_id, f"Running: {' '.join(cmd)}")
@@ -84,7 +81,7 @@ class DeployWorker:
                 cmd,
                 capture_output=True,
                 text=True,
-                cwd=Path(repo_path).parent if str(install_script).startswith(str(repo_path)) else repo_path,
+                cwd=Path(repo_path).parent,
                 timeout=300
             )
 
