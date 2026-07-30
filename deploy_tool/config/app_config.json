@@ -1,6 +1,0 @@
-{
-  "gitlab_url": "",
-  "ssh_key_path": "~/.ssh/id_ed25519",
-  "refresh_interval_minutes": 5,
-  "repo_clone_dir": "./repo"
-}
