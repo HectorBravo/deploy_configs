@@ -13,7 +13,7 @@ Python desktop application for deploying versions from a GitLab repository to mu
 
 ## GUI Layout
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │  Deploy Configs                                             [─] [□] [✕]      │
 ├─────────────────────────────────────────────────────────────────────────────────┤
