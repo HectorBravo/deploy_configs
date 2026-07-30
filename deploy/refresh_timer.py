@@ -1,65 +1,50 @@
 """
-Auto-refresh timer module for periodic tag refresh.
+Auto-refresh timer for automatic tag refresh at configurable intervals.
 """
 
 import threading
 import time
-from typing import Callable, Optional
+from typing import Callable
 
 
 class RefreshTimer:
-    """Periodic timer for auto-refreshing tags."""
+    """Manages automatic refresh of tags at configurable intervals."""
 
-    def __init__(self, interval_minutes: float = 5.0,
-                 refresh_callback: Optional[Callable] = None):
+    def __init__(self, interval_seconds: int, on_refresh: Callable):
         """
         Initialize RefreshTimer.
 
         Args:
-            interval_minutes: Interval in minutes between refreshes.
-            refresh_callback: Callback function to call on refresh.
+            interval_seconds: Interval in seconds between automatic refreshes.
+            on_refresh: Callback function to call when refresh timer fires.
         """
-        self.interval_seconds = interval_minutes * 60
-        self.refresh_callback = refresh_callback
-        self._running = False
-        self._thread: Optional[threading.Thread] = None
-        self._last_refresh = None
-
-    def _refresh_loop(self):
-        """Internal refresh loop."""
-        while self._running:
-            time.sleep(self.interval_seconds)
-            if self._running and self.refresh_callback:
-                self._last_refresh = time.time()
-                self.refresh_callback()
+        self.interval_seconds = interval_seconds
+        self.on_refresh_callback = on_refresh
+        self._thread: threading.Thread = None
+        self._stop_event = threading.Event()
 
     def start(self):
-        """Start the refresh timer."""
-        if not self._running:
-            self._running = True
-            self._thread = threading.Thread(target=self._refresh_loop, daemon=True)
-            self._thread.start()
+        """Start the automatic refresh timer."""
+        if self._thread and self._thread.is_alive():
+            return
+
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
 
     def stop(self):
-        """Stop the refresh timer."""
-        self._running = False
+        """Stop the automatic refresh timer."""
+        self._stop_event.set()
         if self._thread:
-            self._thread.join(timeout=5)
+            self._thread.join()
             self._thread = None
 
-    def is_running(self) -> bool:
-        """Check if the timer is running."""
-        return self._running
-
-    def get_last_refresh(self) -> Optional[float]:
-        """Get the timestamp of the last refresh."""
-        return self._last_refresh
-
-    def set_interval(self, minutes: float):
-        """
-        Set a new refresh interval.
-
-        Args:
-            minutes: New interval in minutes.
-        """
-        self.interval_seconds = minutes * 60
+    def _run(self):
+        """Internal method to run the refresh loop."""
+        while not self._stop_event.is_set():
+            self._stop_event.wait(self.interval_seconds)
+            if not self._stop_event.is_set():
+                try:
+                    self.on_refresh_callback()
+                except Exception as e:
+                    print(f"Error during auto-refresh: {e}")

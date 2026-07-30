@@ -1,140 +1,177 @@
 """
-Deploy worker module for parallel deployment to devices.
+Deploy worker module for handling parallel deployment to multiple devices.
 """
 
 import subprocess
 import threading
-from pathlib import Path
-from typing import Dict, Callable, Optional
+import queue
+from typing import Callable, Optional
+from deploy.git_manager import GitManager
 
 
 class DeployWorker:
-    """Handles deployment to devices in parallel."""
+    """Manages parallel deployment to multiple devices."""
 
-    def __init__(self, log_callback: Optional[Callable] = None):
+    def __init__(self, git_manager: GitManager):
         """
         Initialize DeployWorker.
 
         Args:
-            log_callback: Optional callback function for log messages.
+            git_manager: GitManager instance for repository operations.
         """
-        self.log_callback = log_callback
+        self.git_manager = git_manager
         self._threads: list[threading.Thread] = []
+        self._log_queue: queue.Queue = queue.Queue()
+        self._deploy_status: dict[str, str] = {}  # device_ip -> status
+        self._lock = threading.Lock()
 
-    def _log(self, device_id: str, message: str):
-        """Log a message for a device."""
-        if self.log_callback:
-            self.log_callback(device_id, message)
-
-    def deploy_to_device(self, device: Dict, tag: str, repo_path: str = "deploy_repo",
-                         base_dir: str = ".") -> tuple[bool, str]:
+    def deploy_to_devices(self, devices: list[dict], selected_tag: str,
+                          on_log: Callable, on_status: Callable) -> bool:
         """
-        Deploy a specific tag to a single device.
-
-        The deployment process:
-        1. Clone/fetch the repository to repo_path (subfolder where GUI is located)
-        2. Checkout the selected tag
-        3. Run ./repo/install.sh XX where XX = last octet + 1 of device IP
+        Deploy a selected tag to multiple devices in parallel.
 
         Args:
-            device: Device dictionary with 'ip' and 'name' keys.
-            tag: Tag/version to deploy.
-            repo_path: Path to the cloned repository (subfolder where GUI runs).
-            base_dir: Base directory where repo_path is located.
+            devices: List of device dicts with 'ip', 'name', 'enabled' keys.
+            selected_tag: The tag/version to deploy.
+            on_log: Callback for log messages (device_ip, message).
+            on_status: Callback for status updates (device_ip, status).
 
         Returns:
-            Tuple of (success, message)
+            True if deployment was initiated successfully.
         """
-        ip = device.get('ip', 'unknown')
-        name = device.get('name', ip)
-        device_id = name
+        # Filter enabled devices
+        enabled_devices = [d for d in devices if d.get("enabled", True)]
+        selected_devices = [d for d in enabled_devices if d.get("selected", False)]
 
-        try:
-            # Calculate last octet + 1 (e.g., 192.168.2.101 -> 102)
-            last_octet = int(ip.split('.')[-1])
-            short_id = str(last_octet + 1)  # e.g., 101 -> "102"
+        if not selected_devices:
+            on_log("SYSTEM", "No devices selected for deployment.")
+            return False
 
-            self._log(device_id, f"Starting deployment to {ip} (id: {short_id})")
-            self._log(device_id, f"Checking out tag: {tag}")
+        if not self.git_manager.is_cloned:
+            on_log("SYSTEM", "Repository not cloned. Cannot deploy.")
+            on_status("SYSTEM", "error")
+            return False
 
-            # Step 1: Checkout the tag in the cloned repo
-            checkout_result = subprocess.run(
-                ['git', 'checkout', tag],
-                capture_output=True,
-                text=True,
-                cwd=repo_path,
-                timeout=60
-            )
+        if self.git_manager.install_sh_path is None:
+            on_log("SYSTEM", "install.sh not found in repository. Cannot deploy.")
+            on_status("SYSTEM", "error")
+            return False
 
-            if checkout_result.returncode != 0:
-                self._log(device_id, f"Checkout failed: {checkout_result.stderr}")
-                return False, f"Checkout failed: {checkout_result.stderr}"
+        # Reset status
+        with self._lock:
+            self._deploy_status = {d["ip"]: "pending" for d in selected_devices}
 
-            self._log(device_id, "Tag checked out successfully")
+        # Checkout the selected tag first
+        success, message = self.git_manager.checkout_tag(selected_tag)
+        on_log("SYSTEM", message)
 
-            # Step 2: Run ./repo/install.sh XX from the base_dir (where GUI is located)
-            # The repo is cloned as a subfolder, so install.sh is at base_dir/repo/install.sh
-            install_script = Path(base_dir) / 'repo' / 'install.sh'
+        if not success:
+            on_status("SYSTEM", "error")
+            return False
 
-            if not install_script.exists():
-                self._log(device_id, f"install.sh not found at {install_script}")
-                return False, f"install.sh not found at {install_script}"
+        # Deploy to each device in parallel
+        for device in selected_devices:
+            ip = device["ip"]
+            name = device.get("name", ip)
+            # Extract last octet from IP (e.g., 192.168.2.101 -> 101)
+            last_octet = ip.split('.')[-1]
+            device_id = str(int(last_octet))  # Remove leading zeros
 
-            cmd = ['bash', str(install_script), short_id]
-            self._log(device_id, f"Running: {' '.join(cmd)}")
+            on_status(ip, "deploying")
+            on_log(ip, f"Starting deployment to {name} ({ip}) with version {selected_tag}...")
 
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                cwd=base_dir,
-                timeout=300
-            )
-
-            if result.stdout:
-                for line in result.stdout.strip().split('\n'):
-                    self._log(device_id, line)
-
-            if result.stderr:
-                for line in result.stderr.strip().split('\n'):
-                    self._log(device_id, f"ERR: {line}")
-
-            if result.returncode == 0:
-                self._log(device_id, "Deployment completed successfully!")
-                return True, "Deployment successful"
-            else:
-                self._log(device_id, f"Deployment failed with code {result.returncode}")
-                return False, f"Deployment failed with code {result.returncode}"
-
-        except subprocess.TimeoutExpired:
-            self._log(device_id, "Deployment timed out!")
-            return False, "Deployment timed out"
-        except Exception as e:
-            self._log(device_id, f"Error: {str(e)}")
-            return False, str(e)
-
-    def deploy_to_multiple(self, devices: list[Dict], tag: str, repo_path: str = "deploy_repo",
-                           base_dir: str = "."):
-        """
-        Deploy to multiple devices in parallel.
-
-        Args:
-            devices: List of device dictionaries.
-            tag: Tag/version to deploy.
-            repo_path: Path to the cloned repository.
-            base_dir: Base directory where the GUI is located.
-        """
-        self._threads = []
-
-        for device in devices:
             thread = threading.Thread(
-                target=self.deploy_to_device,
-                args=(device, tag, repo_path, base_dir),
+                target=self._deploy_to_device,
+                args=(ip, name, device_id, selected_tag, on_log, on_status),
                 daemon=True
             )
             self._threads.append(thread)
             thread.start()
 
-        # Wait for all threads to complete
+        return True
+
+    def _deploy_to_device(self, ip: str, name: str, device_id: str,
+                          tag: str, on_log: Callable, on_status: Callable):
+        """
+        Deploy to a single device.
+
+        Args:
+            ip: Device IP address.
+            name: Device name.
+            device_id: Last octet of the IP.
+            tag: Tag to deploy.
+            on_log: Callback for log messages.
+            on_status: Callback for status updates.
+        """
+        try:
+            process = self.git_manager.run_install_script(device_id)
+            on_log(ip, f"Running install.sh {device_id}...")
+
+            # Read output in real-time
+            if process.stdout:
+                for line in process.stdout:
+                    if line.strip():
+                        on_log(ip, f"  {line.rstrip()}")
+
+            # MEDIUM-01 FIX: Add timeout to prevent hanging
+            try:
+                process.wait(timeout=300)  # 5 minute timeout
+            except subprocess.TimeoutExpired:
+                process.kill()
+                with self._lock:
+                    self._deploy_status[ip] = "timeout"
+                on_status(ip, "timeout")
+                on_log(ip, "✗ Deployment timed out (300s).")
+                return
+
+            if process.returncode == 0:
+                with self._lock:
+                    self._deploy_status[ip] = "success"
+                on_status(ip, "success")
+                on_log(ip, f"✓ Deployment to {name} ({ip}) completed successfully.")
+            else:
+                with self._lock:
+                    self._deploy_status[ip] = "failed"
+                on_status(ip, "failed")
+                on_log(ip, f"✗ Deployment to {name} ({ip}) failed with exit code {process.returncode}.")
+
+        except FileNotFoundError as e:
+            with self._lock:
+                self._deploy_status[ip] = "error"
+            on_status(ip, "error")
+            on_log(ip, f"✗ Error: {str(e)}")
+        except Exception as e:
+            with self._lock:
+                self._deploy_status[ip] = "error"
+            on_status(ip, "error")
+            on_log(ip, f"✗ Deployment error: {str(e)}")
+
+    def get_status(self, ip: str) -> str:
+        """Get the deployment status for a device."""
+        with self._lock:
+            return self._deploy_status.get(ip, "pending")
+
+    def get_all_status(self) -> dict[str, str]:
+        """Get deployment status for all devices."""
+        with self._lock:
+            return dict(self._deploy_status)
+
+    def is_running(self) -> bool:
+        """Check if any deployment is in progress."""
+        return any(t.is_alive() for t in self._threads)
+
+    def wait_for_completion(self, timeout: Optional[float] = None) -> bool:
+        """
+        Wait for all deployment threads to complete.
+
+        Args:
+            timeout: Maximum time to wait in seconds (None for no timeout).
+
+        Returns:
+            True if all deployments completed successfully.
+        """
         for thread in self._threads:
-            thread.join()
+            thread.join(timeout=timeout)
+
+        status = self.get_all_status()
+        return all(s == "success" for s in status.values()) if status else False

@@ -1,1 +1,3 @@
-# GUI module
+"""
+GUI module for the deploy tool.
+"""

@@ -1,137 +1,187 @@
 """
 Git manager module for handling repository operations.
+Supports clone, fetch, checkout, and tag listing operations.
 """
 
-import subprocess
 import os
+import re
+import subprocess
+import threading
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
+from urllib.parse import urlparse
 
 
 class GitManager:
-    """Manages Git repository operations for deployment."""
+    """Manages Git repository operations for the deploy tool."""
 
-    def __init__(self, config_path: str = "config/app_config.json"):
+    def __init__(self, repo_dir: str, gitlab_url: str, ssh_key_path: str):
         """
         Initialize GitManager.
 
         Args:
-            config_path: Path to the app configuration file.
+            repo_dir: Directory where the repository will be cloned.
+            gitlab_url: GitLab repository URL.
+            ssh_key_path: Path to the SSH private key.
+
+        Raises:
+            ValueError: If any input fails validation.
+            FileNotFoundError: If SSH key file does not exist.
+            PermissionError: If SSH key has insecure permissions.
         """
-        self.config_path = Path(config_path)
-        self.repo_url = ""
-        self.username = ""
-        self.password_or_token = ""
-        self.ssh_key_path = "~/.ssh/id_ed25519"
-        self.deploy_repo_folder = "deploy_repo"
-        self._load_config()
+        # Validate all inputs
+        self.repo_dir = self._validate_path(repo_dir, "repo_dir")
+        self.gitlab_url = self._validate_gitlab_url(gitlab_url)
+        self.ssh_key_path = self._validate_ssh_key(ssh_key_path)
+        self._lock = threading.Lock()
+        self._is_cloned = False
+        self._current_tag: Optional[str] = None
 
-    def _load_config(self):
-        """Load configuration from app_config.json."""
-        import json
-        try:
-            with open(self.config_path, 'r') as f:
-                config = json.load(f)
+    @staticmethod
+    def _validate_path(path_str: str, name: str) -> Path:
+        """Validate that a path is within the current working directory."""
+        path = Path(path_str).expanduser().resolve()
+        cwd = Path.cwd().resolve()
+        
+        # Allow paths within cwd or in repo_cache subdirectory
+        if not (str(path).startswith(str(cwd)) or str(path).startswith(str(cwd / "repo"))):
+            raise ValueError(f"{name} must be within current directory: {path_str}")
+        return path
 
-            git_config = config.get('git', {})
-            self.repo_url = git_config.get('url', '')
-            self.username = git_config.get('username', '')
-            self.password_or_token = git_config.get('password_or_token', '')
+    @staticmethod
+    def _validate_gitlab_url(url: str) -> str:
+        """Validate GitLab URL format to prevent injection attacks."""
+        if not url or not url.strip():
+            raise ValueError("GitLab URL cannot be empty")
+        
+        url = url.strip()
+        
+        # Allow SSH URLs (git@host:owner/repo)
+        if re.match(r'^git@[\w.-]+:[\w-]+/[\w.-]+$', url):
+            return url
+        
+        # Allow HTTPS URLs
+        parsed = urlparse(url)
+        if parsed.scheme in ('https', 'http') and parsed.hostname:
+            if parsed.scheme == 'http':
+                raise ValueError("Use HTTPS instead of HTTP for GitLab URL")
+            return url
+        
+        raise ValueError(f"Invalid GitLab URL format: {url}")
 
-            ssh_config = config.get('ssh', {})
-            self.ssh_key_path = ssh_config.get('key_path', '~/.ssh/id_ed25519')
+    @staticmethod
+    def _validate_ssh_key(path_str: str) -> Path:
+        """Validate SSH key file exists and has secure permissions."""
+        path = Path(path_str).expanduser().resolve()
+        
+        if not path.exists():
+            raise FileNotFoundError(f"SSH key not found: {path}")
+        
+        stats = path.stat()
+        perms = oct(stats.st_mode & 0o777)
+        if stats.st_mode & 0o777 != 0o600:
+            raise PermissionError(
+                f"SSH key permissions too open ({perms}). Must be 0600. "
+                f"Fix with: chmod 600 {path}"
+            )
+        
+        return path
 
-            deploy_config = config.get('deploy', {})
-            self.deploy_repo_folder = deploy_config.get('repo_folder', 'deploy_repo')
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"Error loading config: {e}")
+    @property
+    def is_cloned(self) -> bool:
+        """Check if the repository has been cloned."""
+        return self.repo_dir.exists() and (self.repo_dir / ".git").exists()
 
-    def _get_authenticated_url(self) -> str:
-        """Get the Git URL with embedded credentials."""
-        if self.username and self.password_or_token:
-            return f"https://{self.username}:{self.password_or_token}@{self.repo_url.replace('https://', '')}"
-        return self.repo_url
+    @property
+    def install_sh_path(self) -> Optional[Path]:
+        """Get the path to install.sh if it exists."""
+        if self.is_cloned:
+            path = self.repo_dir / "install.sh"
+            return path if path.exists() else None
+        return None
 
-    def clone_repo(self, target_dir: Optional[str] = None) -> tuple[bool, str]:
+    def clone(self) -> tuple[bool, str]:
         """
-        Clone the deployment repository.
-
-        Args:
-            target_dir: Directory to clone into. Defaults to deploy_repo folder.
+        Clone the repository.
 
         Returns:
-            Tuple of (success, message)
+            Tuple of (success, message).
         """
+        if self.is_cloned:
+            return True, "Repository already cloned."
+
         try:
-            if target_dir is None:
-                target_dir = self.deploy_repo_folder
+            # Ensure parent directory exists
+            self.repo_dir.parent.mkdir(parents=True, exist_ok=True)
 
-            if os.path.exists(target_dir):
-                return True, "Repository already exists"
-
-            url = self._get_authenticated_url()
+            env = self._get_git_env()
             result = subprocess.run(
-                ['git', 'clone', url, target_dir],
+                ["git", "clone", self.gitlab_url, str(self.repo_dir)],
                 capture_output=True,
                 text=True,
+                env=env,
                 timeout=300
             )
 
             if result.returncode == 0:
-                return True, "Repository cloned successfully"
+                self._is_cloned = True
+                return True, "Repository cloned successfully."
             else:
-                return False, f"Failed to clone: {result.stderr}"
+                error = result.stderr.strip()
+                return False, f"Failed to clone: {error}"
+        except subprocess.TimeoutExpired:
+            return False, "Clone operation timed out."
         except Exception as e:
-            return False, f"Clone error: {str(e)}"
+            return False, f"Clone failed: {str(e)}"
 
-    def fetch_tags(self, repo_path: Optional[str] = None) -> tuple[bool, str]:
+    def fetch_tags(self) -> tuple[bool, str]:
         """
-        Fetch latest tags from the remote.
-
-        Args:
-            repo_path: Path to the repository. Defaults to deploy_repo folder.
+        Fetch latest tags from remote.
 
         Returns:
-            Tuple of (success, message)
+            Tuple of (success, message).
         """
-        try:
-            if repo_path is None:
-                repo_path = self.deploy_repo_folder
+        if not self.is_cloned:
+            return False, "Repository not cloned yet."
 
+        try:
+            env = self._get_git_env()
             result = subprocess.run(
-                ['git', 'fetch', '--tags'],
+                ["git", "fetch", "--tags", "-q"],
                 capture_output=True,
                 text=True,
-                cwd=repo_path,
+                cwd=str(self.repo_dir),
+                env=env,
                 timeout=120
             )
 
             if result.returncode == 0:
-                return True, "Tags fetched successfully"
+                return True, "Tags fetched successfully."
             else:
-                return False, f"Failed to fetch tags: {result.stderr}"
+                return False, f"Failed to fetch tags: {result.stderr.strip()}"
+        except subprocess.TimeoutExpired:
+            return False, "Fetch operation timed out."
         except Exception as e:
-            return False, f"Fetch error: {str(e)}"
+            return False, f"Fetch failed: {str(e)}"
 
-    def get_tags(self, repo_path: Optional[str] = None) -> tuple[bool, List[str]]:
+    def list_tags(self) -> tuple[bool, list[str]]:
         """
-        Get list of tags from the repository.
-
-        Args:
-            repo_path: Path to the repository. Defaults to deploy_repo folder.
+        List all tags from the repository, sorted by version.
 
         Returns:
-            Tuple of (success, list of tags)
+            Tuple of (success, list of tag names).
         """
-        try:
-            if repo_path is None:
-                repo_path = self.deploy_repo_folder
+        if not self.is_cloned:
+            return False, []
 
+        try:
+            env = self._get_git_env()
             result = subprocess.run(
-                ['git', 'tag', '--sort=-creatordate'],
+                ["git", "tag", "-l", "--sort=-v:refname"],
                 capture_output=True,
                 text=True,
-                cwd=repo_path,
+                cwd=str(self.repo_dir),
+                env=env,
                 timeout=30
             )
 
@@ -143,32 +193,113 @@ class GitManager:
         except Exception as e:
             return False, []
 
-    def checkout_tag(self, tag: str, repo_path: Optional[str] = None) -> tuple[bool, str]:
+    def checkout_tag(self, tag: str) -> tuple[bool, str]:
         """
-        Checkout a specific tag in the repository.
+        Checkout a specific tag.
 
         Args:
-            tag: Tag name to checkout.
-            repo_path: Path to the repository. Defaults to deploy_repo folder.
+            tag: The tag name to checkout.
 
         Returns:
-            Tuple of (success, message)
+            Tuple of (success, message).
         """
-        try:
-            if repo_path is None:
-                repo_path = self.deploy_repo_folder
+        if not self.is_cloned:
+            return False, "Repository not cloned yet."
 
+        try:
+            env = self._get_git_env()
             result = subprocess.run(
-                ['git', 'checkout', tag],
+                ["git", "checkout", tag, "-q"],
                 capture_output=True,
                 text=True,
-                cwd=repo_path,
+                cwd=str(self.repo_dir),
+                env=env,
                 timeout=60
             )
 
             if result.returncode == 0:
-                return True, f"Checked out tag: {tag}"
+                self._current_tag = tag
+                return True, f"Checked out tag '{tag}' successfully."
             else:
-                return False, f"Failed to checkout: {result.stderr}"
+                return False, f"Failed to checkout '{tag}': {result.stderr.strip()}"
+        except subprocess.TimeoutExpired:
+            return False, "Checkout operation timed out."
         except Exception as e:
-            return False, f"Checkout error: {str(e)}"
+            return False, f"Checkout failed: {str(e)}"
+
+    @staticmethod
+    def _validate_device_id(device_id: str) -> str:
+        """
+        Validate device_id to prevent command injection.
+        
+        Args:
+            device_id: The device identifier (should be numeric).
+            
+        Returns:
+            Validated device_id string.
+            
+        Raises:
+            ValueError: If device_id contains invalid characters.
+        """
+        if not re.match(r'^\d{1,3}$', device_id):
+            raise ValueError(
+                f"Invalid device_id: '{device_id}'. Must be 1-3 digits only."
+            )
+        return device_id
+
+    def run_install_script(self, device_id: str) -> subprocess.Popen:
+        """
+        Run the install.sh script with the device ID.
+
+        Args:
+            device_id: The last octet of the device IP (e.g., '101' for '192.168.2.101').
+
+        Returns:
+            Popen process object for the install script.
+            
+        Raises:
+            FileNotFoundError: If install.sh not found.
+            ValueError: If device_id is invalid.
+        """
+        # CRIT-02 FIX: Validate device_id to prevent command injection
+        device_id = self._validate_device_id(device_id)
+        
+        install_script = self.repo_dir / "install.sh"
+        if not install_script.exists():
+            raise FileNotFoundError(f"install.sh not found in {self.repo_dir}")
+
+        # Make the script executable
+        os.chmod(install_script, 0o755)
+
+        env = os.environ.copy()
+        # CRIT-01 FIX: Re-enable StrictHostKeyChecking for security
+        # Note: Users must pre-populate known_hosts for their GitLab server
+        env["GIT_SSH_COMMAND"] = (
+            f"ssh -i {self.ssh_key_path} "
+            "-o StrictHostKeyChecking=yes "
+            "-o UserKnownHostsFile=~/.ssh/known_hosts "
+            "-o IdentitiesOnly=yes"
+        )
+
+        return subprocess.Popen(
+            ["./install.sh", device_id],
+            cwd=str(self.repo_dir),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env,
+            # Explicitly disable shell to prevent shell injection
+            shell=False
+        )
+
+    def _get_git_env(self) -> dict:
+        """Get environment with SSH settings for Git."""
+        env = os.environ.copy()
+        # CRIT-01 FIX: Re-enable StrictHostKeyChecking for security
+        env["GIT_SSH_COMMAND"] = (
+            f"ssh -i {self.ssh_key_path} "
+            "-o StrictHostKeyChecking=yes "
+            "-o UserKnownHostsFile=~/.ssh/known_hosts "
+            "-o IdentitiesOnly=yes"
+        )
+        return env

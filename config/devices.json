@@ -1,19 +1,22 @@
 {
   "devices": [
     {
-      "ip": "192.168.2.10",
-      "name": "Device 1",
-      "enabled": true
+      "ip": "192.168.2.101",
+      "name": "Device 101",
+      "enabled": true,
+      "selected": false
     },
     {
-      "ip": "192.168.2.20",
-      "name": "Device 2",
-      "enabled": true
+      "ip": "192.168.2.102",
+      "name": "Device 102",
+      "enabled": true,
+      "selected": false
     },
     {
-      "ip": "192.168.2.30",
-      "name": "Device 3",
-      "enabled": true
+      "ip": "192.168.2.103",
+      "name": "Device 103",
+      "enabled": false,
+      "selected": false
     }
   ]
 }

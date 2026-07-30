@@ -1,23 +1,40 @@
 """
-Deploy Configs - Main Application Entry Point
-
-A Python desktop application for deploying versions from a GitLab repository
-to multiple devices in parallel.
+Deploy Configs - Main application entry point.
 """
 
-import sys
+import customtkinter as ctk
+import json
+import os
 from pathlib import Path
-
-# Add the deploy_tool directory to the path
-sys.path.insert(0, str(Path(__file__).parent))
 
 from gui.main_window import MainWindow
 
 
+def load_config():
+    """Load application configuration."""
+    config_path = Path(__file__).parent / "config" / "app_config.json"
+    with open(config_path, 'r') as f:
+        return json.load(f)
+
+
+def load_devices():
+    """Load device configuration."""
+    devices_path = Path(__file__).parent / "config" / "devices.json"
+    with open(devices_path, 'r') as f:
+        config = json.load(f)
+    return config.get("devices", [])
+
+
 def main():
     """Main entry point."""
-    app = MainWindow()
-    app.run()
+    ctk.set_appearance_mode("dark")
+    ctk.set_default_color_theme("blue")
+
+    config = load_config()
+    devices = load_devices()
+
+    app = MainWindow(devices, config)
+    app.mainloop()
 
 
 if __name__ == "__main__":
