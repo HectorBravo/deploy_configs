@@ -65,6 +65,14 @@ class GitManager:
         if parsed.scheme in ('https', 'http') and parsed.hostname:
             if parsed.scheme == 'http':
                 raise ValueError("Use HTTPS instead of HTTP for GitLab URL")
+            
+            # CRIT-04 FIX: Reject URLs with embedded credentials (user:pass@host)
+            if parsed.username or parsed.password:
+                raise ValueError(
+                    "URLs with embedded credentials are not allowed. "
+                    "Use SSH URLs (git@host:owner/repo) or HTTPS URLs without credentials."
+                )
+            
             return url
         
         raise ValueError(f"Invalid GitLab URL format: {url}")

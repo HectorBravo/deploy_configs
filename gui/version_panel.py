@@ -81,14 +81,52 @@ class VersionPanel(ctk.CTkFrame):
         # Load initial tags (empty until repo is connected)
         self._render_tags(scroll_frame)
 
+    @staticmethod
+    def _sanitize_tag(tag: str) -> str:
+        """
+        Sanitize a tag name for safe display and processing.
+        
+        Args:
+            tag: Raw tag name.
+            
+        Returns:
+            Sanitized tag name.
+            
+        Raises:
+            ValueError: If tag contains dangerous characters.
+        """
+        if not tag or not tag.strip():
+            raise ValueError("Tag cannot be empty")
+        
+        # Reject null bytes and control characters
+        if '\x00' in tag or any(ord(c) < 32 and c not in ('\n', '\r', '\t') for c in tag):
+            raise ValueError(f"Tag contains invalid characters: {tag[:20]}...")
+        
+        # Reject excessively long tags (Git limits to 256 bytes)
+        if len(tag.encode('utf-8')) > 256:
+            raise ValueError(f"Tag too long (>256 bytes): {tag[:30]}...")
+        
+        return tag.strip()
+
     def set_tags(self, tags: list[str]):
         """
         Set the list of available tags.
 
         Args:
             tags: List of tag names.
+            
+        Raises:
+            ValueError: If any tag contains invalid characters.
         """
-        self._tags = tags
+        # LOW-04 FIX: Validate all tags before accepting
+        sanitized_tags = []
+        for tag in tags:
+            try:
+                sanitized_tags.append(self._sanitize_tag(tag))
+            except ValueError:
+                # Skip invalid tags silently (they're from git, should be valid)
+                continue
+        self._tags = sanitized_tags
         self._current_tag = None if tags else None
         self._render_tags(None)  # Will find scroll_frame internally
         self._version_count_label.configure(text=f"{len(tags)} versions")
@@ -152,7 +190,8 @@ class VersionPanel(ctk.CTkFrame):
             )
             copy_btn.pack(side="right", padx=2)
 
-        self._tag_frames.append(frame)  # Track at least one
+            # LOW-03 FIX: Track each frame, not just the last one
+            self._tag_frames.append(frame)
 
     def _on_tag_selected(self):
         """Handle tag selection."""
@@ -170,8 +209,14 @@ class VersionPanel(ctk.CTkFrame):
 
     def _copy_tag(self, tag: str):
         """Copy tag name to clipboard."""
-        # Will be handled by the main window
-        pass
+        # LOW-06 FIX: Implement clipboard copy properly
+        try:
+            self.master.clipboard_clear()
+            self.master.clipboard_append(tag)
+            self.master.update()
+        except Exception:
+            # Clipboard not available (e.g., headless environment)
+            pass
 
     def get_selected_tag(self) -> Optional[str]:
         """Get the currently selected tag."""

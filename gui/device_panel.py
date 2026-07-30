@@ -3,7 +3,8 @@ Device panel for the deploy tool GUI.
 """
 
 import customtkinter as ctk
-from typing import List, Callable
+import ipaddress
+from typing import List, Callable, Optional
 
 
 class DevicePanel(ctk.CTkFrame):
@@ -16,10 +17,40 @@ class DevicePanel(ctk.CTkFrame):
         self.checkboxes: dict = {}
         self._build_ui()
 
+    @staticmethod
+    def _validate_ip(ip_str: str) -> tuple[bool, Optional[str]]:
+        """
+        Validate an IP address string.
+        
+        Args:
+            ip_str: IP address string to validate.
+            
+        Returns:
+            Tuple of (is_valid, error_message).
+        """
+        if not ip_str or not ip_str.strip():
+            return False, "IP address cannot be empty"
+        
+        try:
+            addr = ipaddress.ip_address(ip_str)
+            # Only allow IPv4
+            if not isinstance(addr, ipaddress.IPv4Address):
+                return False, f"Only IPv4 addresses are supported, got: {ip_str}"
+            return True, None
+        except ValueError:
+            return False, f"Invalid IP address: {ip_str}"
+
     def _build_ui(self):
         """Build the device panel UI."""
         for device in self.devices:
-            ip = device["ip"]
+            ip = device.get("ip", "")
+            
+            # LOW-05 FIX: Validate IP address format
+            is_valid, error = self._validate_ip(ip)
+            if not is_valid:
+                # Skip devices with invalid IPs (log in production)
+                continue
+            
             name = device.get("name", ip)
             enabled = device.get("enabled", True)
 

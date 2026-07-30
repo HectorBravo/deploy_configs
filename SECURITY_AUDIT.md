@@ -237,11 +237,18 @@ Deployment actions are not logged to an audit trail. In production, all deploy a
 | P0 | CRIT-01: SSH Host Key Verification | Low | 15 min |
 | P0 | CRIT-02: Command Injection Prevention | Low | 15 min |
 | P0 | CRIT-03: Credential Storage | Medium | 1 hour |
+| P0 | CRIT-04: Embedded Credentials in URL | Low | 10 min |
 | P1 | HIGH-01: Path Traversal Prevention | Medium | 30 min |
 | P1 | HIGH-02: SSH Key Validation | Low | 15 min |
 | P1 | HIGH-03: URL Validation | Low | 15 min |
 | P2 | MEDIUM-01: Timeout on wait() | Low | 10 min |
 | P2 | MEDIUM-02: Thread Safety | Medium | 1 hour |
+| P3 | LOW-01: Verbose Error Messages | Low | 10 min |
+| P3 | LOW-02: No Logging of Deployment Actions | Low | 30 min |
+| P3 | LOW-03: Frame Tracking Bug | Low | 5 min |
+| P3 | LOW-04: Tag Validation | Low | 10 min |
+| P3 | LOW-05: IP Validation | Low | 10 min |
+| P3 | LOW-06: Copy Tag Not Implemented | Low | 5 min |
 
 ---
 

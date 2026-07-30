@@ -63,6 +63,13 @@ Deploy Configs is a Python desktop application for deploying versions from a Git
 | 33 | Apply MEDIUM-02 fix - thread-safe GUI callbacks | ✅ Completed | 02:43:38 | 02:44:00 | Added add_log_threadsafe(), add_system_log(), add_success_log(), add_error_log() |
 | 34 | Create security test suite | ✅ Completed | 02:42:30 | 02:43:01 | Created tests/test_security.py with 20+ test cases |
 | 35 | Commit security fixes - CRIT-03, LOW-01, LOW-02, MEDIUM-02 | ✅ Completed | 02:44:05 | 02:44:13 | Commit 0d783b5 - pushed to https://github.com/HectorBravo/deploy_configs |
+| 36 | Apply CRIT-04 fix - reject URLs with embedded credentials | ✅ Completed | 02:52:00 | 02:52:08 | Added credential check in _validate_gitlab_url() |
+| 37 | Apply LOW-03 fix - frame tracking in version_panel.py | ✅ Completed | 02:52:14 | 02:52:36 | Moved append inside for loop |
+| 38 | Apply LOW-04 fix - tag validation in version_panel.py | ✅ Completed | 02:52:14 | 02:52:36 | Added _sanitize_tag() with null byte/control char rejection |
+| 39 | Apply LOW-05 fix - IP validation in device_panel.py | ✅ Completed | 02:52:43 | 02:52:58 | Added _validate_ip() using ipaddress module |
+| 40 | Apply LOW-06 fix - implement _copy_tag | ✅ Completed | 02:52:14 | 02:52:36 | Implemented clipboard_clear/clipboard_append |
+| 41 | Add CRIT-04 test to test_security.py | ✅ Completed | 02:53:03 | 02:53:14 | Added test_credentials_in_url_rejected() |
+| 42 | Update SECURITY_AUDIT.md with new issues | ✅ Completed | 02:53:14 | 02:53:30 | Added CRIT-04, LOW-03/04/05/06 to remediation table |
 
 ## Implementation Details
 

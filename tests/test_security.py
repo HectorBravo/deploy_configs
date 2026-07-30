@@ -164,6 +164,22 @@ class TestGitURLValidation:
         with pytest.raises(ValueError, match="Use HTTPS"):
             GitManager._validate_gitlab_url("http://gitlab.example.com/owner/repo.git")
 
+    def test_credentials_in_url_rejected(self):
+        """CRIT-04: URLs with embedded credentials should be rejected."""
+        from deploy.git_manager import GitManager
+        
+        # Token in URL
+        with pytest.raises(ValueError, match="embedded credentials"):
+            GitManager._validate_gitlab_url(
+                "https://glpat-token123@gitlab.example.com/owner/repo.git"
+            )
+        
+        # User:pass in URL
+        with pytest.raises(ValueError, match="embedded credentials"):
+            GitManager._validate_gitlab_url(
+                "https://user:pass@gitlab.example.com/owner/repo.git"
+            )
+
     def test_ssh_url_allowed(self):
         """SSH URLs should be allowed."""
         from deploy.git_manager import GitManager
