@@ -127,7 +127,7 @@ class GitManager:
                 self._is_cloned = True
                 return True, "Repository cloned successfully."
             else:
-                error = result.stderr.strip()
+                error = self.sanitize_error(result.stderr.strip())
                 return False, f"Failed to clone: {error}"
         except subprocess.TimeoutExpired:
             return False, "Clone operation timed out."
@@ -158,7 +158,8 @@ class GitManager:
             if result.returncode == 0:
                 return True, "Tags fetched successfully."
             else:
-                return False, f"Failed to fetch tags: {result.stderr.strip()}"
+                error = self.sanitize_error(result.stderr.strip())
+                return False, f"Failed to fetch tags: {error}"
         except subprocess.TimeoutExpired:
             return False, "Fetch operation timed out."
         except Exception as e:
@@ -221,11 +222,55 @@ class GitManager:
                 self._current_tag = tag
                 return True, f"Checked out tag '{tag}' successfully."
             else:
-                return False, f"Failed to checkout '{tag}': {result.stderr.strip()}"
+                error = self.sanitize_error(result.stderr.strip())
+                return False, f"Failed to checkout '{tag}': {error}"
         except subprocess.TimeoutExpired:
             return False, "Checkout operation timed out."
         except Exception as e:
             return False, f"Checkout failed: {str(e)}"
+
+    @staticmethod
+    def sanitize_error(error_msg: str) -> str:
+        """
+        Sanitize error messages to prevent information leakage (LOW-01).
+        
+        Removes or replaces:
+        - File paths (especially SSH key paths)
+        - Git URLs with credentials
+        - Sensitive environment variable values
+        
+        Args:
+            error_msg: The raw error message.
+            
+        Returns:
+            Sanitized error message safe for logging/display.
+        """
+        sanitized = error_msg
+
+        # Replace SSH key paths
+        ssh_patterns = [
+            r'/[^\s]*\.ssh/[^\s]+',
+            r'[^\s]*/ssh/[^\s]+',
+        ]
+        for pattern in ssh_patterns:
+            sanitized = re.sub(pattern, '<key_path>', sanitized)
+
+        # Replace Git URLs (especially with credentials)
+        git_patterns = [
+            r'https?://[^/\s]+/[^/\s]+/[^/\s]+\.git',
+            r'git@[\w.-]+:[\w-]+/[\w.-]+',
+        ]
+        for pattern in git_patterns:
+            sanitized = re.sub(pattern, '<url>', sanitized)
+
+        # Replace home directory paths
+        sanitized = re.sub(
+            r'(/(?:home|root|Users)/[^/\s]*)',
+            '<path>',
+            sanitized
+        )
+
+        return sanitized
 
     @staticmethod
     def _validate_device_id(device_id: str) -> str:
