@@ -5,7 +5,6 @@ Deploy Configs is a Python desktop application for deploying versions from a Git
 
 ## Project Structure
 ```
-deploy_tool/
 ├── config/
 │   ├── devices.json          # Device configuration (IP, name, enabled status)
 │   └── app_config.json       # Application settings (Git URL, SSH key, refresh interval)
@@ -18,10 +17,10 @@ deploy_tool/
 │   ├── __init__.py
 │   ├── main_window.py        # Main application window
 │   ├── device_panel.py       # Device selection panel
-│   ├── version_panel.py      # Version/tag selection panel
-│   └── log_panel.py          # Real-time log output panel
+│   ├── log_panel.py          # Real-time log output panel
 ├── requirements.txt          # Python dependencies
 ├── README.md                 # Project documentation
+├── main.py                   # Application entry point
 └── status.md                 # This file - project status tracking
 ```
 
@@ -57,6 +56,7 @@ deploy_tool/
 | 26 | Commit security fixes to GitHub | ✅ Completed | 02:06:01 | 02:07:13 | Commit 2560b80 - security fixes |
 | 27 | Move SECURITY_AUDIT.md to repo root | ✅ Completed | 02:08:41 | 02:09:20 | Commit 4c4eca5 - moved to root |
 | 28 | Sync local deploy_tool files to repo root | ✅ Completed | 02:15:00 | 02:17:33 | Commit a417e96 - all files synced |
+| 29 | Delete deploy_tool folder from repo | ✅ Completed | 02:18:00 | 02:18:24 | Commit 57ad66c - removed deploy_tool |
 
 ## Implementation Details
 
@@ -83,4 +83,4 @@ deploy_tool/
 ## Timeline Summary
 - **Project Start**: 7/31/2026 01:43 UTC+4
 - **Current Progress**: All core files completed (100%)
-- **Final Sync**: 02:17:33 UTC+4
+- **Final Sync**: 02:18:24 UTC+4
