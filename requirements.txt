@@ -1,0 +1,3 @@
+# Deploy Configs - Python Dependencies
+
+customtkinter>=5.2
