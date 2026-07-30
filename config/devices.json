@@ -1,0 +1,19 @@
+{
+  "devices": [
+    {
+      "ip": "192.168.2.10",
+      "name": "Device 1",
+      "enabled": true
+    },
+    {
+      "ip": "192.168.2.20",
+      "name": "Device 2",
+      "enabled": true
+    },
+    {
+      "ip": "192.168.2.30",
+      "name": "Device 3",
+      "enabled": true
+    }
+  ]
+}

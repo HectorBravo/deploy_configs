@@ -1,0 +1,16 @@
+{
+  "git": {
+    "url": "",
+    "username": "",
+    "password_or_token": ""
+  },
+  "ssh": {
+    "key_path": "~/.ssh/id_ed25519"
+  },
+  "refresh": {
+    "interval_minutes": 5
+  },
+  "deploy": {
+    "repo_folder": "deploy_repo"
+  }
+}
