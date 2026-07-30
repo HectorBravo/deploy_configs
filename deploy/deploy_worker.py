@@ -31,11 +31,16 @@ class DeployWorker:
         """
         Deploy a specific tag to a single device.
 
+        The deployment process:
+        1. Clone/fetch the repository to repo_path (subfolder where GUI is located)
+        2. Checkout the selected tag
+        3. Run ./repo/install.sh XX where XX = last octet + 1 of device IP
+
         Args:
             device: Device dictionary with 'ip' and 'name' keys.
             tag: Tag/version to deploy.
-            repo_path: Path to the cloned repository.
-            base_dir: Base directory for the deploy repo.
+            repo_path: Path to the cloned repository (subfolder where GUI runs).
+            base_dir: Base directory where repo_path is located.
 
         Returns:
             Tuple of (success, message)
@@ -52,7 +57,7 @@ class DeployWorker:
             self._log(device_id, f"Starting deployment to {ip} (id: {short_id})")
             self._log(device_id, f"Checking out tag: {tag}")
 
-            # Step 1: Checkout the tag
+            # Step 1: Checkout the tag in the cloned repo
             checkout_result = subprocess.run(
                 ['git', 'checkout', tag],
                 capture_output=True,
@@ -67,12 +72,13 @@ class DeployWorker:
 
             self._log(device_id, "Tag checked out successfully")
 
-            # Step 2: Run install script with short ID
-            install_script = Path(repo_path) / 'repo' / 'install.sh'
+            # Step 2: Run ./repo/install.sh XX from the base_dir (where GUI is located)
+            # The repo is cloned as a subfolder, so install.sh is at base_dir/repo/install.sh
+            install_script = Path(base_dir) / 'repo' / 'install.sh'
 
             if not install_script.exists():
-                self._log(device_id, "repo/install.sh not found!")
-                return False, "repo/install.sh not found"
+                self._log(device_id, f"install.sh not found at {install_script}")
+                return False, f"install.sh not found at {install_script}"
 
             cmd = ['bash', str(install_script), short_id]
             self._log(device_id, f"Running: {' '.join(cmd)}")
@@ -81,7 +87,7 @@ class DeployWorker:
                 cmd,
                 capture_output=True,
                 text=True,
-                cwd=Path(repo_path).parent,
+                cwd=base_dir,
                 timeout=300
             )
 
@@ -116,7 +122,7 @@ class DeployWorker:
             devices: List of device dictionaries.
             tag: Tag/version to deploy.
             repo_path: Path to the cloned repository.
-            base_dir: Base directory for the deploy repo.
+            base_dir: Base directory where the GUI is located.
         """
         self._threads = []
 
