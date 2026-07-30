@@ -11,6 +11,43 @@ Python desktop application for deploying versions from a GitLab repository to mu
 - **Real-time Logs**: Color-coded output per device during deployment
 - **Security Hardened**: SSH host key verification, credential sanitization, input validation, audit logging
 
+## GUI Layout
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│  Deploy Configs                                             [─] [□] [✕]      │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│  GitLab URL: [git@gitlab.example.com:owner/repo.git  ] [Clone Repo]            │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│  Version:    [v1.0.0 ▼                       ]  [Refresh Tags]                 │
+│  (1 version)                                                                  │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│  Devices                          │  Logs                                       │
+│  ┌─────────────────────────────┐ │  ┌───────────────────────────────────────┐  │
+│  │ ☑ Device Alpha (192.168.2.│ │  │ [14:23:01] SYSTEM Repository cloned   │  │
+│  │  101) [enabled]             │ │  │ [14:23:02] SYSTEM Tags fetched: 5    │  │
+│  │ ☐ Device Beta  (192.168.2.│ │  │                                       │  │
+│  │  102) [enabled]             │ │  │ ───────────────────────────────────   │  │
+│  │ ☐ Device Gamma (192.168.2.│ │  │ [14:23:10] 101 Starting deployment... │  │
+│  │  103) [enabled]             │ │  │ [14:23:10] 101   git checkout v1.0.0 │  │
+│  │ ☐ Device Delta (192.168.2.│ │  │ [14:23:11] 101   ./install.sh 101     │  │
+│  │  104) [disabled]            │ │  │ [14:23:15] 101 ✓ Deployment success. │  │
+│  └─────────────────────────────┘ │  └───────────────────────────────────────┘  │
+├─────────────────────────────────┴──┤  ┌────────────────────────────────────┐  │
+│  [ Deploy ]     [ Cancel ]        │  │ Last refresh: 14:23:01             │  │
+└────────────────────────────────────┴──┴────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Panel descriptions:**
+- **Git URL**: Input field for GitLab repository URL + Clone button
+- **Version**: Dropdown to select a tag/version from the repository
+- **Devices**: List of all configured devices with checkboxes. Enabled devices can be selected; disabled devices appear grayed out
+- **Logs**: Real-time color-coded output. Each device has a unique color. System messages appear in white
+- **Deploy button**: Enabled only after a version is selected. Deploys to all selected devices in parallel
+- **Refresh Tags**: Manual refresh button for the tag list
+- **Last refresh**: Timestamp of the last tag refresh (automatic or manual)
+
 ## Architecture
 
 ```
