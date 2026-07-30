@@ -17,7 +17,19 @@ class RefreshTimer:
         Args:
             interval_seconds: Interval in seconds between automatic refreshes.
             on_refresh: Callback function to call when refresh timer fires.
+            
+        Raises:
+            ValueError: If interval_seconds is not a positive integer.
+            TypeError: If interval_seconds is not an integer or on_refresh is not callable.
         """
+        # MEDIUM-03 FIX: Validate interval_seconds to prevent busy-wait
+        if not isinstance(interval_seconds, int) or isinstance(interval_seconds, bool):
+            raise TypeError("interval_seconds must be an integer")
+        if interval_seconds <= 0:
+            raise ValueError("interval_seconds must be a positive integer")
+        if not callable(on_refresh):
+            raise TypeError("on_refresh must be a callable")
+        
         self.interval_seconds = interval_seconds
         self.on_refresh_callback = on_refresh
         self._thread: threading.Thread = None
